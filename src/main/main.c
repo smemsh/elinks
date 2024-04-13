@@ -8,6 +8,7 @@
 #include <stdio.h>
 #include <stdlib.h>
 #include <string.h>
+#include <sys/time.h>
 #include <sys/types.h>
 #ifdef HAVE_SYS_SOCKET_H
 #include <sys/socket.h> /* OS/2 needs this after sys/types.h */
@@ -66,6 +67,27 @@ static int ac;
 static char **av;
 static int init_b = 0;
 static int init_o = 0;
+
+struct timeval tstart, tlast;
+
+void
+print_elapsed(const char *whence)
+{
+	struct timeval tnow, ttotal, tdelta;
+	unsigned long fromstart, fromlast;
+
+	gettimeofday(&tnow, NULL);
+
+	timersub(&tnow, &tstart, &ttotal);
+	timersub(&tnow, &tlast, &tdelta);
+	fromstart = ttotal.tv_sec * 1e6 + ttotal.tv_usec;
+	fromlast = tdelta.tv_sec * 1e6 + tdelta.tv_usec;
+
+	fprintf(stderr, "%8d%10lu +%8lu %-s\n",
+	        getpid(), fromstart, fromlast, whence);
+
+	memcpy(&tlast, &tnow, sizeof(struct timeval));
+}
 
 /* Check if either stdin or stdout are pipes */
 static void
@@ -135,6 +157,10 @@ init(void)
 	int fd = -1;
 	enum retval ret;
 
+	gettimeofday(&tstart, NULL);
+	memcpy(&tlast, &tstart, sizeof(struct timeval));
+	print_elapsed("init_start");
+
 	init_osdep();
 	check_cwd();
 
@@ -187,6 +213,8 @@ init(void)
 		init_home();
 	}
 
+	print_elapsed("init_after_home");
+
 	/* If there's no -no-connect, -dump or -source option, check if there's
 	 * no other ELinks running. If we found any, by-pass initialization of
 	 * non critical subsystems, open socket and act as a slave for it. */
@@ -196,9 +224,12 @@ init(void)
 	    || (fd = init_interlink()) == -1) {
 
 		master_pid = getpid();
+		print_elapsed("init_after_interlink");
 		parse_options_again();
 		init_b = 1;
+		print_elapsed("init_before_modules");
 		init_modules(builtin_modules);
+		print_elapsed("init_after_modules");
 	}
 
 	if (get_cmd_opt_bool("always-load-config")) {
@@ -274,6 +305,8 @@ init(void)
 
 	if (program.terminate) close_terminal_pipes();
 	free_string_list(&url_list);
+
+	print_elapsed("init_end");
 }
 
 

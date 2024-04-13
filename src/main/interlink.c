@@ -438,7 +438,9 @@ free_and_error:
 static int
 connect_to_af_unix(void)
 {
+	print_elapsed("afconnect_before_getaddr");
 	int pf = get_address(&s_info_connect, ADDR_IP_CLIENT);
+	print_elapsed("afconnect_after_getaddr");
 
 	if (pf != -1) {
 		s_info_connect.fd = socket(pf, SOCK_STREAM, 0);
@@ -457,6 +459,8 @@ connect_to_af_unix(void)
 			}
 		}
 	}
+
+	print_elapsed("afconnect_after_connect");
 
 	mem_free_set(&s_info_connect.addr, NULL);
 	return -1;
@@ -505,12 +509,15 @@ done_interlink(void)
 int
 init_interlink(void)
 {
+	print_elapsed("interlink_pre_af_connect");
 	int pipefds[2];
 	char trigger;
 	ssize_t n;
 	int fd = connect_to_af_unix();
 
 	if (fd != -1 || remote_session_flags) return fd;
+
+	print_elapsed("interlink_post_af_connect");
 
 	parse_options_again();
 
@@ -543,13 +550,17 @@ init_interlink(void)
 			}
 			if (error) return -1;
 
-			return connect_to_af_unix();
+			fd = connect_to_af_unix();
+			print_elapsed("interlink_parent_connected");
+			return fd;
 		}
 
 		/* child */
 		master_pid = getpid();
 		close_terminal_pipes();
 	}
+
+	print_elapsed("interlink_child_prebind");
 	bind_to_af_unix();
 	if (get_opt_bool("ui.sessions.fork_on_start", NULL)) {
 		if ((n = write(pipefds[1], &trigger, 1)) <= 0) {
@@ -562,6 +573,7 @@ init_interlink(void)
 			report_af_unix_error("close(pipe_w)", errno);
 		}
 	}
+	print_elapsed("interlink_child_postbind");
 	return -1;
 }
 
